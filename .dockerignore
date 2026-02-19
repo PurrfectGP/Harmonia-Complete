@@ -1,0 +1,11 @@
+.git
+__pycache__
+.env
+*.pth
+alembic/versions/*.pyc
+tests/
+.venv
+node_modules
+*.md
+.pytest_cache
+.mypy_cache

@@ -1,0 +1,40 @@
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/harmonia-v3-repo/harmonia-api:${SHORT_SHA}', '.']
+
+  # Step 2: Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/harmonia-v3-repo/harmonia-api:${SHORT_SHA}']
+
+  # Step 3: Run Alembic migrations
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['run', '--network=cloudbuild',
+           '${_REGION}-docker.pkg.dev/${PROJECT_ID}/harmonia-v3-repo/harmonia-api:${SHORT_SHA}',
+           'alembic', 'upgrade', 'head']
+    secretEnv: ['DATABASE_URL']
+
+  # Step 4: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args: ['gcloud', 'run', 'deploy', 'harmonia-api',
+           '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/harmonia-v3-repo/harmonia-api:${SHORT_SHA}',
+           '--region=${_REGION}',
+           '--platform=managed',
+           '--cpu=2', '--memory=2Gi',
+           '--min-instances=1', '--max-instances=10',
+           '--timeout=120',
+           '--concurrency=20',
+           '--set-cloudsql-instances=${_CLOUD_SQL_INSTANCE}',
+           '--vpc-connector=harmonia-vpc-connector',
+           '--service-account=harmonia-v3-runner@${PROJECT_ID}.iam.gserviceaccount.com',
+           '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,FERNET_KEY=FERNET_KEY:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest',
+           '--set-env-vars=GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCS_BUCKET_NAME=${PROJECT_ID}-harmonia-v3,ENVIRONMENT=production,LOG_LEVEL=INFO']
+
+substitutions:
+  _REGION: europe-west2
+  _CLOUD_SQL_INSTANCE: ''
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/DATABASE_URL/versions/latest
+      env: 'DATABASE_URL'
