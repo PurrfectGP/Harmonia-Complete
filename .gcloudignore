@@ -1,0 +1,13 @@
+.git
+__pycache__
+.env
+*.pth
+alembic/versions/*.pyc
+tests/
+.venv
+node_modules
+infra/
+README.md
+docs/
+.pytest_cache
+.mypy_cache
