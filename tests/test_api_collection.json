@@ -1,0 +1,627 @@
+{
+	"info": {
+		"_postman_id": "harmonia-v3-api-collection",
+		"name": "Harmonia V3 — Complete API Test Collection",
+		"description": "Postman-compatible HTTP test collection covering all Harmonia V3 API endpoints.\n\nBase URL variable: {{base_url}} (default: http://localhost:8000/api/v1)\n\nEndpoint groups:\n- Users (5 endpoints)\n- Questionnaire (3 endpoints)\n- Visual Intelligence (4 endpoints)\n- HLA Genetics (2 endpoints)\n- Matching (3 endpoints)\n- Reports (5 endpoints)\n- Admin Calibration (5 endpoints)\n\nTotal: 27 endpoints + 2 health checks = 29",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "user_a_id",
+			"value": "00000000-0000-0000-0000-000000000001",
+			"type": "string"
+		},
+		{
+			"key": "user_b_id",
+			"value": "00000000-0000-0000-0000-000000000002",
+			"type": "string"
+		},
+		{
+			"key": "match_id",
+			"value": "00000000-0000-0000-0000-000000000010",
+			"type": "string"
+		},
+		{
+			"key": "calibration_example_id",
+			"value": "00000000-0000-0000-0000-000000000020",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"description": "Liveness and deep readiness probes.",
+			"item": [
+				{
+					"name": "Liveness Probe",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/health",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8000",
+							"path": ["health"]
+						},
+						"description": "Lightweight liveness probe — always returns healthy if the process is running."
+					},
+					"response": []
+				},
+				{
+					"name": "Deep Readiness Probe",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8000/health/deep",
+							"protocol": "http",
+							"host": ["localhost"],
+							"port": "8000",
+							"path": ["health", "deep"]
+						},
+						"description": "Deep readiness probe — verifies database, Redis, and GCS connectivity."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"description": "User CRUD, photo uploads, and discovery feed.",
+			"item": [
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"alice@example.com\",\n  \"display_name\": \"Alice\",\n  \"age\": 28,\n  \"gender\": \"female\",\n  \"location\": \"London, UK\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/",
+							"host": ["{{base_url}}"],
+							"path": ["users", ""]
+						},
+						"description": "Register a new user account. Returns 201 on success, 409 if email already exists."
+					},
+					"response": []
+				},
+				{
+					"name": "List Users",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/?limit=20&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["users", ""],
+							"query": [
+								{"key": "limit", "value": "20"},
+								{"key": "offset", "value": "0"}
+							]
+						},
+						"description": "Return a paginated list of active users."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/{{user_a_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{user_a_id}}"]
+						},
+						"description": "Retrieve a single user by their UUID."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"display_name\": \"Alice Smith\",\n  \"location\": \"Manchester, UK\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/{{user_a_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{user_a_id}}"]
+						},
+						"description": "Update mutable fields on a user record. Only non-None fields are applied."
+					},
+					"response": []
+				},
+				{
+					"name": "Upload Photos",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "files",
+									"type": "file",
+									"src": "/path/to/photo1.jpg",
+									"description": "One or more image files"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/users/{{user_a_id}}/photos",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{user_a_id}}", "photos"]
+						},
+						"description": "Upload one or more photos for a user. Files are stored in GCS and URIs are appended to the user's photos array."
+					},
+					"response": []
+				},
+				{
+					"name": "Discovery Feed",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/users/{{user_a_id}}/discover?limit=20&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["users", "{{user_a_id}}", "discover"],
+							"query": [
+								{"key": "limit", "value": "20"},
+								{"key": "offset", "value": "0"}
+							]
+						},
+						"description": "Return candidate users for the discovery feed, excluding the requesting user."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Questionnaire",
+			"description": "Submit questionnaire responses and retrieve the Felix question set.",
+			"item": [
+				{
+					"name": "Get Questions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/questionnaire/questions",
+							"host": ["{{base_url}}"],
+							"path": ["questionnaire", "questions"]
+						},
+						"description": "Return all 6 Felix questions with question_number, question_text, and category."
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Single Response",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user_a_id}}\",\n  \"question_number\": 1,\n  \"response_text\": \"I'd probably suggest we just split it evenly to keep things simple. I hate those awkward moments where everyone's trying to calculate their exact share. Life's too short for that kind of pettiness. If someone ordered way more, they can throw in extra if they want, but I'm not going to be the one calling them out.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/questionnaire/submit",
+							"host": ["{{base_url}}"],
+							"path": ["questionnaire", "submit"]
+						},
+						"description": "Submit a single question response. Validates word count (25-150 words), stores the response, and triggers Gemini parsing."
+					},
+					"response": []
+				},
+				{
+					"name": "Submit All Responses (Batch)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user_a_id}}\",\n  \"responses\": [\n    {\n      \"question_number\": 1,\n      \"response_text\": \"I'd probably suggest we just split it evenly to keep things simple. I hate those awkward moments where everyone's trying to calculate their exact share. Life's too short for that kind of pettiness.\"\n    },\n    {\n      \"question_number\": 2,\n      \"response_text\": \"I'd dip into savings without overthinking it. Unexpected expenses happen and I'd rather just deal with it quickly than stress about where the money comes from. I can always rebuild savings later.\"\n    },\n    {\n      \"question_number\": 3,\n      \"response_text\": \"I'd probably try to mediate and find common ground. I really don't like it when things escalate unnecessarily. I'd rather everyone walk away feeling heard than have someone win the argument.\"\n    },\n    {\n      \"question_number\": 4,\n      \"response_text\": \"I'd take the opportunity without hesitation. Life is too short to play it safe all the time. Even if it doesn't work out, at least I'd know I tried rather than wondering what if.\"\n    },\n    {\n      \"question_number\": 5,\n      \"response_text\": \"Give me a spontaneous road trip any day. I love the thrill of not knowing exactly where you'll end up. Planning every detail takes the magic out of it for me.\"\n    },\n    {\n      \"question_number\": 6,\n      \"response_text\": \"I'd speak up even if it made things uncomfortable. Some things are more important than keeping the peace. I'd rather be honest and deal with the fallout than stay quiet and feel complicit.\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/questionnaire/submit-all",
+							"host": ["{{base_url}}"],
+							"path": ["questionnaire", "submit-all"]
+						},
+						"description": "Submit all 6 questionnaire responses in a single batch. Triggers the full Gemini parsing pipeline and profile aggregation. Returns the profile_id and quality_tier."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Visual Intelligence",
+			"description": "Visual attractiveness pipeline: calibration, scoring, and swipe recording.",
+			"item": [
+				{
+					"name": "Get Calibration Image Set",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/visual/calibration-set",
+							"host": ["{{base_url}}"],
+							"path": ["visual", "calibration-set"]
+						},
+						"description": "Return the set of 30 calibration images used for MetaFBP adaptation. The client displays these and collects 1-5 ratings."
+					},
+					"response": []
+				},
+				{
+					"name": "Calibrate Visual Preference Model",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user_a_id}}\",\n  \"ratings\": [\n    {\"image_id\": \"cal_001\", \"rating\": 4},\n    {\"image_id\": \"cal_002\", \"rating\": 2},\n    {\"image_id\": \"cal_003\", \"rating\": 5},\n    {\"image_id\": \"cal_004\", \"rating\": 3},\n    {\"image_id\": \"cal_005\", \"rating\": 1},\n    {\"image_id\": \"cal_006\", \"rating\": 4},\n    {\"image_id\": \"cal_007\", \"rating\": 3},\n    {\"image_id\": \"cal_008\", \"rating\": 5},\n    {\"image_id\": \"cal_009\", \"rating\": 2},\n    {\"image_id\": \"cal_010\", \"rating\": 4}\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/visual/calibrate",
+							"host": ["{{base_url}}"],
+							"path": ["visual", "calibrate"]
+						},
+						"description": "Accept user ratings on calibration images, trigger MetaFBP inner-loop adaptation, and store personalised model weights."
+					},
+					"response": []
+				},
+				{
+					"name": "Score Target User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user_a_id}}\",\n  \"target_user_id\": \"{{user_b_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/visual/score",
+							"host": ["{{base_url}}"],
+							"path": ["visual", "score"]
+						},
+						"description": "Score a target user through the calibrated visual preference model. Returns the S_vis score and component breakdown. Requires prior calibration."
+					},
+					"response": []
+				},
+				{
+					"name": "Record Swipe",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"swiper_id\": \"{{user_a_id}}\",\n  \"target_id\": \"{{user_b_id}}\",\n  \"direction\": \"right\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/visual/swipe",
+							"host": ["{{base_url}}"],
+							"path": ["visual", "swipe"]
+						},
+						"description": "Record a swipe action (left / right / superlike). If a reciprocal right-swipe or superlike exists, is_mutual_match is returned as true."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "HLA Genetics",
+			"description": "Upload HLA genotype data and compute biological compatibility scores.",
+			"item": [
+				{
+					"name": "Upload HLA Data",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"{{user_a_id}}\",\n  \"alleles\": {\n    \"A\": [\"A*01:01\", \"A*02:01\"],\n    \"B\": [\"B*08:01\", \"B*07:02\"],\n    \"DRB1\": [\"DRB1*15:01\", \"DRB1*03:01\"]\n  },\n  \"source\": \"23andMe_v5\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/hla/upload",
+							"host": ["{{base_url}}"],
+							"path": ["hla", "upload"]
+						},
+						"description": "Validate, encrypt, and store HLA allele data for a user. Expects an alleles dict mapping locus names to lists of allele identifiers."
+					},
+					"response": []
+				},
+				{
+					"name": "Get HLA Compatibility",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/hla/compatibility/{{user_a_id}}/{{user_b_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["hla", "compatibility", "{{user_a_id}}", "{{user_b_id}}"]
+						},
+						"description": "Compute the S_bio biological compatibility score between two users. Includes heterozygosity index, olfactory attraction prediction, and display tier."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Matching",
+			"description": "Full Whole-the-Match (WtM) calculations and match retrieval.",
+			"item": [
+				{
+					"name": "Calculate Full Match",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/match/calculate/{{user_a_id}}/{{user_b_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["match", "calculate", "{{user_a_id}}", "{{user_b_id}}"]
+						},
+						"description": "Trigger a full WtM match calculation for a user pair. Orchestrates S_vis (visual), S_psych (personality), and S_bio (HLA) scoring dimensions and produces a composite WtM score."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Match by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/match/{{match_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["match", "{{match_id}}"]
+						},
+						"description": "Retrieve a match by its UUID, including all scoring components and the customer summary."
+					},
+					"response": []
+				},
+				{
+					"name": "List User Matches",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/match/list/{{user_a_id}}?limit=20&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["match", "list", "{{user_a_id}}"],
+							"query": [
+								{"key": "limit", "value": "20"},
+								{"key": "offset", "value": "0"}
+							]
+						},
+						"description": "Return all matches involving a specific user, sorted by WtM score descending. Each item includes the other user's ID and display name."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Reports",
+			"description": "Multi-level report endpoints with access control.\n- Level 1 (Customer Summary): User-facing, NO evidence exposed\n- Level 2A (Narrative): Admin only\n- Level 2B (HLA Analysis): Admin only\n- Level 3 (Reasoning Chain): Admin only, full transparency\n- Standalone Evidence Map: Admin only",
+			"item": [
+				{
+					"name": "Level 1 — Customer Summary",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reports/{{match_id}}/summary",
+							"host": ["{{base_url}}"],
+							"path": ["reports", "{{match_id}}", "summary"]
+						},
+						"description": "Level 1 customer-facing summary. Includes display scores, badges, compatibility breakdown, shared traits, and conversation starters. NO evidence or reasoning data is exposed."
+					},
+					"response": []
+				},
+				{
+					"name": "Level 3 — Reasoning Chain",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reports/{{match_id}}/reasoning-chain",
+							"host": ["{{base_url}}"],
+							"path": ["reports", "{{match_id}}", "reasoning-chain"]
+						},
+						"description": "Level 3 full reasoning chain (admin only). Exposes complete scoring breakdown, component weights, per-sin similarity contributions, and all intermediate calculation results."
+					},
+					"response": []
+				},
+				{
+					"name": "Level 2A — Narrative Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reports/{{match_id}}/narrative",
+							"host": ["{{base_url}}"],
+							"path": ["reports", "{{match_id}}", "narrative"]
+						},
+						"description": "Level 2A narrative match report (admin only). Natural-language narrative summarising personality similarity analysis with per-sin contributions, quality tier context, and trait explanations."
+					},
+					"response": []
+				},
+				{
+					"name": "Level 2B — HLA Analysis",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reports/{{match_id}}/hla-analysis",
+							"host": ["{{base_url}}"],
+							"path": ["reports", "{{match_id}}", "hla-analysis"]
+						},
+						"description": "Level 2B HLA biological compatibility analysis (admin only). Full HLA report including allele summaries, heterozygosity index, olfactory predictions, peptide-binding analyses, and disease associations."
+					},
+					"response": []
+				},
+				{
+					"name": "Evidence Map for User",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/reports/{{match_id}}/evidence-map/{{user_a_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["reports", "{{match_id}}", "evidence-map", "{{user_a_id}}"]
+						},
+						"description": "Standalone evidence map for a user in a match (admin only). Exposes every per-question, per-sin score with evidence snippets, character offsets, confidence values, and model provenance."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Admin — Calibration",
+			"description": "Ground-truth calibration pipeline management: review queue, approve/correct/reject, bulk review, coverage stats, and drift metrics.",
+			"item": [
+				{
+					"name": "Get Review Queue",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/calibration/queue?status=pending&limit=50&offset=0",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "calibration", "queue"],
+							"query": [
+								{"key": "status", "value": "pending"},
+								{"key": "limit", "value": "50"},
+								{"key": "offset", "value": "0"}
+							]
+						},
+						"description": "Return calibration examples filtered by status (pending/approved/corrected/rejected), question number, and sin. Defaults to pending items — the primary review queue for human validators."
+					},
+					"response": []
+				},
+				{
+					"name": "Review Single Example",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"correct\",\n  \"validated_score\": -1.0,\n  \"reviewer\": \"admin@harmonia.ai\",\n  \"notes\": \"Sarcasm detected — score should be -1 not +3\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/calibration/{{calibration_example_id}}/review",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "calibration", "{{calibration_example_id}}", "review"]
+						},
+						"description": "Apply a review action (approve / correct / reject) to a single calibration example. For 'correct' actions, a validated_score must be provided."
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Review Examples",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reviewer\": \"admin@harmonia.ai\",\n  \"reviews\": [\n    {\n      \"example_id\": \"00000000-0000-0000-0000-000000000021\",\n      \"action\": \"approve\",\n      \"notes\": \"Gemini score looks accurate\"\n    },\n    {\n      \"example_id\": \"00000000-0000-0000-0000-000000000022\",\n      \"action\": \"correct\",\n      \"validated_score\": 2.0,\n      \"notes\": \"Too harsh — should be +2 not +4\"\n    },\n    {\n      \"example_id\": \"00000000-0000-0000-0000-000000000023\",\n      \"action\": \"reject\",\n      \"notes\": \"Response is too short to be meaningful\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/admin/calibration/bulk-review",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "calibration", "bulk-review"]
+						},
+						"description": "Batch review multiple calibration examples in a single request. Returns a summary of succeeded vs failed reviews."
+					},
+					"response": []
+				},
+				{
+					"name": "Calibration Stats & Coverage Map",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/calibration/stats",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "calibration", "stats"]
+						},
+						"description": "Return calibration coverage statistics. Includes total counts by review status, a 6x7 coverage map (question x sin) showing validated examples per cell (target: 5), and average correction magnitude."
+					},
+					"response": []
+				},
+				{
+					"name": "Calibration Effectiveness & Drift",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/admin/calibration/effectiveness",
+							"host": ["{{base_url}}"],
+							"path": ["admin", "calibration", "effectiveness"]
+						},
+						"description": "Return calibration effectiveness metrics including drift analysis (how Gemini raw scores deviate from validated scores over time), convergence metrics, per-sin accuracy breakdowns, and approval rate."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
