@@ -1428,6 +1428,396 @@ ALLOWED_ORIGINS=https://app.harmonia.com,https://admin.harmonia.com
 
 ---
 
+## Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph Client["Client (React Native / Next.js)"]
+        FE[Frontend App]
+    end
+
+    subgraph CloudRun["Google Cloud Run"]
+        API[FastAPI Application<br/>app/main.py]
+
+        subgraph Routes["API Routes (/api/v1)"]
+            R_USR[users.py]
+            R_QST[questionnaire.py]
+            R_VIS[visual.py]
+            R_HLA[hla.py]
+            R_MAT[matching.py]
+            R_RPT[reports.py]
+            R_ADM[admin/calibration.py]
+        end
+
+        subgraph Services["Service Layer"]
+            SVC_GEM[GeminiService<br/>7 sins × 6 questions<br/>= 42 Gemini calls]
+            SVC_PRO[ProfileService<br/>CWMV aggregation<br/>quality scoring]
+            SVC_SIM[SimilarityService<br/>perceived similarity<br/>trait overlap]
+            SVC_VIS[VisualService<br/>MetaFBP inference<br/>trait matching]
+            SVC_HLA[HLAService<br/>allele counting<br/>olfactory prediction]
+            SVC_MAT[MatchingService<br/>3-stage cascade<br/>WtM calculation]
+            SVC_RPT[ReportService<br/>4 report levels<br/>evidence maps]
+            SVC_CAL[CalibrationService<br/>few-shot retrieval<br/>admin review]
+        end
+
+        subgraph ML["ML Layer"]
+            META[MetaFBP<br/>meta.py + learner.py<br/>inference.py]
+            TRAIT[Trait Extraction<br/>extractor.py]
+        end
+    end
+
+    subgraph External["External APIs"]
+        GEMINI[Google Gemini API<br/>gemini-3-pro → flash → 2.5-flash]
+        HAIKU[Claude Haiku 4.5<br/>Cluster Generation]
+    end
+
+    subgraph GCP["Google Cloud Platform (europe-west2)"]
+        CSQL[(Cloud SQL<br/>PostgreSQL 15)]
+        REDIS[(Memorystore<br/>Redis 7.x)]
+        GCS[(Cloud Storage<br/>Photos + Models)]
+        SM[Secret Manager<br/>API Keys + Fernet]
+    end
+
+    FE -->|HTTPS| API
+    API --> Routes
+    Routes --> Services
+
+    SVC_GEM -->|Parse responses| GEMINI
+    SVC_CAL -->|Generate profiles| HAIKU
+    SVC_VIS --> META
+    SVC_VIS --> TRAIT
+
+    Services -->|Read/Write| CSQL
+    SVC_VIS -->|Cache adapted weights| REDIS
+    SVC_VIS -->|Load .pth checkpoints| GCS
+    API -->|Load secrets at startup| SM
+
+    style SVC_MAT fill:#f96,stroke:#333
+    style SVC_RPT fill:#69f,stroke:#333
+    style SVC_GEM fill:#9f6,stroke:#333
+```
+
+### Match Calculation Data Flow
+
+```
+User A ──┐                                    ┌── User B
+         │                                    │
+    Photos + Ratings                     Photos + Ratings
+         │                                    │
+         ▼                                    ▼
+┌─────────────────┐                  ┌─────────────────┐
+│  Phase 1: Visual │                  │  Phase 1: Visual │
+│  MetaFBP Score   │                  │  MetaFBP Score   │
+│  S_vis(A→B)      │                  │  S_vis(B→A)      │
+└────────┬────────┘                  └────────┬────────┘
+         │                                    │
+         │    ┌──────────────────────┐        │
+         │    │  Phase 2: Psychometric│        │
+         │    │  SimilarityService    │        │
+         │    │  S_psych (shared)     │        │
+         │    └──────────┬───────────┘        │
+         │               │                    │
+         │    ┌──────────────────────┐        │
+         │    │  Phase 3: Biological  │        │
+         │    │  HLA Allele Counting  │        │
+         │    │  S_bio (shared)       │        │
+         │    └──────────┬───────────┘        │
+         │               │                    │
+         ▼               ▼                    ▼
+    ┌────────────────────────────────────────────┐
+    │  WtM = (0.4 × S_vis) + (0.3 × S_psych)    │
+    │        + (0.3 × S_bio)                      │
+    │  Reciprocal = √(WtM_A→B × WtM_B→A)        │
+    └──────────────────┬─────────────────────────┘
+                       │
+                       ▼
+    ┌────────────────────────────────────────────┐
+    │  Report Generation                          │
+    │  L1: Customer summary (NO evidence)         │
+    │  L2A: Psych narrative (Protocol A)          │
+    │  L2B: HLA analysis (Protocol B)             │
+    │  L3: Full reasoning chain + evidence maps   │
+    └────────────────────────────────────────────┘
+```
+
+---
+
+## Complete File & Directory Map
+
+```
+Harmonia-Complete/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                          # FastAPI entry point, lifespan handler (GCS model loading, DB/Redis init)
+│   ├── config.py                        # Pydantic Settings: all env vars, model hyperparams, WtM weights
+│   ├── database.py                      # SQLAlchemy async engine, Cloud SQL connector, session factory
+│   ├── models/                          # SQLAlchemy ORM models (10 tables)
+│   │   ├── __init__.py
+│   │   ├── user.py                      # users table
+│   │   ├── profile.py                   # personality_profiles table (PIIP)
+│   │   ├── questionnaire.py             # questionnaire_responses table
+│   │   ├── visual.py                    # visual_preferences + visual_ratings tables
+│   │   ├── hla.py                       # hla_data table (Fernet encrypted)
+│   │   ├── match.py                     # matches + swipes tables
+│   │   ├── evidence.py                  # parsing_evidence table (snippet offsets)
+│   │   └── calibration.py              # calibration_examples table
+│   ├── schemas/                         # Pydantic request/response schemas
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── questionnaire.py
+│   │   ├── profile.py
+│   │   ├── match.py
+│   │   └── report.py
+│   ├── api/                             # FastAPI route handlers (22 endpoints)
+│   │   ├── __init__.py
+│   │   ├── router.py                    # Main API router, mounts all sub-routers
+│   │   ├── users.py                     # User CRUD + photo upload + discovery feed
+│   │   ├── questionnaire.py             # Submit single/batch responses → Gemini parsing
+│   │   ├── visual.py                    # MetaFBP calibration set, calibrate, score, swipe
+│   │   ├── hla.py                       # HLA upload + compatibility scoring
+│   │   ├── matching.py                  # Calculate match, get match, list matches
+│   │   ├── reports.py                   # L1 summary, L2A narrative, L2B HLA, L3 reasoning, evidence map
+│   │   └── admin/
+│   │       ├── __init__.py
+│   │       └── calibration.py           # Review queue, approve/correct/reject, bulk review, stats, drift
+│   ├── services/                        # Business logic layer (8 services)
+│   │   ├── __init__.py
+│   │   ├── gemini_service.py            # Gemini parsing: 7 sins × trait-specific prompts, few-shot injection
+│   │   ├── profile_service.py           # CWMV aggregation, outlier detection, quality scoring
+│   │   ├── similarity_service.py        # Perceived similarity, trait overlap, quality multiplier
+│   │   ├── visual_service.py            # MetaFBP inference wrapper, S_vis formula, trait matching
+│   │   ├── hla_service.py               # S_bio calculation, heterozygosity, olfactory prediction
+│   │   ├── matching_service.py          # 3-stage cascade, WtM formula, weight redistribution
+│   │   ├── report_service.py            # 4 report levels, Protocol A/B personas, evidence maps
+│   │   └── calibration_service.py       # Few-shot retrieval, coverage map, admin review workflow
+│   ├── ml/                              # Machine learning models
+│   │   ├── __init__.py
+│   │   ├── metafbp/                     # MetaFBP neural beauty prediction
+│   │   │   ├── __init__.py
+│   │   │   ├── meta.py                  # Meta-learner class (from MetaVisionLab repo)
+│   │   │   ├── learner.py               # Learner architecture (nn.ParameterList)
+│   │   │   ├── inference.py             # Production inference: load checkpoints, adapt, predict
+│   │   │   └── preprocessing.py         # ImageNet normalisation (224×224, center crop)
+│   │   └── trait_extraction/
+│   │       ├── __init__.py
+│   │       └── extractor.py             # Visual trait extraction (glasses, hair, smile, etc.)
+│   └── utils/
+│       ├── __init__.py
+│       ├── encryption.py                # Fernet encrypt/decrypt for HLA data
+│       ├── logging.py                   # structlog JSON logging configuration
+│       └── storage.py                   # GCS: upload, download, signed URLs, SHA256 integrity
+├── scripts/
+│   ├── cluster_generator.py             # Claude Haiku 4.5 synthetic profile generator
+│   ├── calibration_manager.py           # Calibration DB management (coverage, stats, batch ops)
+│   ├── seed_questions.py                # Seed 6 Felix questions into DB
+│   └── load_test.py                     # Load test: 100 profiles through full pipeline
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py                      # Shared fixtures (HLA alleles, profiles, parsed responses)
+│   ├── test_gemini_service.py           # GeminiService unit tests (prompts, evidence, LIWC, discrepancies)
+│   ├── test_profile_service.py          # ProfileService tests (CWMV, outliers, quality, build_profile)
+│   ├── test_similarity_service.py       # SimilarityService tests (overlap, quality, thresholds, explanation)
+│   ├── test_visual_service.py           # VisualService tests (S_vis formula, trait matching)
+│   ├── test_hla_service.py              # HLAService tests (S_bio, heterozygosity, encryption roundtrip)
+│   ├── test_matching_service.py         # MatchingService tests (WtM, weight redistribution, friction)
+│   ├── test_report_service.py           # ReportService tests (L1 no evidence, L3 evidence maps, protocols)
+│   ├── test_calibration_service.py      # CalibrationService tests (review workflow, few-shot, coverage)
+│   ├── test_integration.py              # Integration tests (spec worked examples, calibration pipeline)
+│   └── test_api_collection.json         # Postman v2.1 collection (22 endpoints, 30 requests)
+├── models/                              # PyTorch weights (gitignored, loaded from GCS at runtime)
+│   ├── universal_extractor.pth          # Stage 1: ResNet-18 feature extractor (~44MB)
+│   └── meta_generator.pth              # Stage 2: Predictor + Generator MLP (~1-5MB)
+├── alembic/
+│   ├── env.py                           # Alembic migration environment
+│   └── versions/
+│       └── 001_initial_schema.py        # All 10 tables in one migration
+├── infra/
+│   ├── setup-gcp.sh                     # One-shot GCP bootstrap (Cloud SQL, Redis, GCS, IAM, VPC)
+│   ├── cloudbuild.yaml                  # CI/CD: build → push → migrate → deploy to Cloud Run
+│   ├── cloud-run-service.yaml           # Knative service definition (health probes, scaling)
+│   └── terraform/
+│       ├── main.tf                      # All GCP resources as Terraform IaC
+│       ├── variables.tf                 # Configurable inputs (project, region, tier)
+│       └── outputs.tf                   # Connection strings, service URL
+├── alembic.ini                          # Alembic configuration
+├── requirements.txt                     # Python dependencies (FastAPI, PyTorch, Gemini, etc.)
+├── pyproject.toml                       # pytest configuration (asyncio_mode = auto)
+├── Dockerfile                           # Multi-stage build for Cloud Run (python:3.11-slim)
+├── .dockerignore                        # Exclude tests, .git, .env from Docker build
+├── .gcloudignore                        # Exclude files from gcloud deploy
+├── .env.example                         # Template for all environment variables
+├── .gitignore                           # Python, .pth, .env, media, __pycache__
+└── README.md                            # This file — complete build plan & documentation
+```
+
+---
+
+## Calibration Database Workflow
+
+The Gemini Calibration Database is a self-improving feedback loop that anchors Gemini's sin scoring over time. Here's how it works:
+
+### Step 1: Generate Synthetic Responses
+Run `scripts/cluster_generator.py` which calls **Claude Haiku 4.5** to generate diverse, realistic responses to the 6 Felix questions. Each generated personality has a target profile (e.g., "high wrath, low greed") to ensure coverage across the full sin spectrum.
+
+### Step 2: Gemini Parses the Synthetic Responses
+Each synthetic response is submitted through the normal PIIP pipeline — GeminiService makes 42 calls (7 sins × 6 questions) and stores results in the `calibration_examples` table with `review_status = 'pending'`.
+
+### Step 3: Admin Reviews in the Queue
+Admins access the review queue via `GET /api/v1/admin/calibration/queue`. For each example they can:
+- **Approve** — Gemini's score is correct. `validated_score = gemini_raw_score`
+- **Correct** — Gemini was wrong. Admin provides their own score and optionally explains why (e.g., "Sarcasm, not genuine anger — should be +2 not +3")
+- **Reject** — Response is unsuitable (incoherent, off-topic, etc.). Excluded from the pool entirely
+
+### Step 4: Validated Examples Become Few-Shot References
+When GeminiService builds a prompt for a new user's response, it queries `CalibrationService.get_few_shot_examples(question_number, sin)` which returns validated examples (approved + corrected) sorted by:
+1. **Corrected examples first** (these teach Gemini where it went wrong)
+2. **Score diversity** (examples spanning the -5 to +5 range)
+3. **Recency** (newer examples preferred)
+
+### Step 5: Monitor Coverage & Drift
+- `GET /api/v1/admin/calibration/stats` shows the 6×7 coverage matrix (42 cells). Target: ≥5 validated examples per cell (210 minimum total)
+- `GET /api/v1/admin/calibration/effectiveness` tracks drift — whether Gemini's scores are converging toward admin expectations over time
+
+### Coverage Matrix
+```
+              greed  pride  lust  wrath  gluttony  envy  sloth
+Question 1:    ■■■    ■■     ■■■   ■■■■    ■■      ■■    ■■
+Question 2:    ■■     ■■■    ■■    ■■      ■■■     ■■    ■■■
+Question 3:    ■■     ■■     ■■■   ■■      ■■      ■■■   ■■
+Question 4:    ■■■    ■■■    ■■    ■■■     ■■      ■■■   ■■
+Question 5:    ■■     ■■     ■■    ■■■■    ■■■     ■■    ■■■
+Question 6:    ■■■    ■■■    ■■    ■■■     ■■      ■■    ■■
+
+■ = 1 validated example    Target: ≥ ■■■■■ (5) per cell
+```
+
+---
+
+## Troubleshooting
+
+### GCS Model Weight Download Fails
+**Symptom:** Application fails to start with "Failed to download model weights from GCS"
+**Cause:** Service account lacks `roles/storage.objectAdmin` or bucket name is wrong
+**Fix:**
+```bash
+# Check IAM binding
+gcloud projects get-iam-policy $PROJECT_ID --filter="bindings.members:harmonia-v3-runner"
+# Grant access
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:harmonia-v3-runner@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+# Verify checkpoint exists
+gsutil ls gs://$BUCKET/models/
+```
+
+### Gemini API Returns 429 (Rate Limited)
+**Symptom:** `ResourceExhausted` errors during profile creation
+**Cause:** Free-tier Gemini has 15 RPM for Pro, 60 RPM for Flash. A single profile creation triggers 42 calls.
+**Fix:** Use the model fallback chain (pro → flash → 2.5-flash). For production, switch to Vertex AI Gemini which has much higher rate limits. The tenacity retry logic in `gemini_service.py` handles transient 429s automatically.
+
+### Cloud SQL Connection Refused
+**Symptom:** `asyncpg.exceptions.ConnectionDoesNotExistError` on Cloud Run
+**Cause:** Missing VPC connector or Cloud SQL instance connection name misconfigured
+**Fix:**
+```bash
+# Verify VPC connector exists
+gcloud compute networks vpc-access connectors describe harmonia-vpc-connector --region=europe-west2
+# Verify Cloud SQL instance
+gcloud sql instances describe harmonia-v3-db
+# Check Cloud Run service has the connector attached
+gcloud run services describe harmonia-api --region=europe-west2 --format="value(spec.template.metadata.annotations)"
+```
+
+### Redis / Memorystore Timeout
+**Symptom:** `redis.exceptions.ConnectionError` or adapted weights cache miss
+**Cause:** Cloud Run cannot reach Memorystore without VPC connector. Memorystore has no public IP.
+**Fix:** Ensure the VPC connector is attached to the Cloud Run service and that Memorystore is in the same VPC/region. Verify with:
+```bash
+gcloud redis instances describe harmonia-redis --region=europe-west2 --format="value(host)"
+```
+
+### MetaFBP Inference Produces Wrong Scores
+**Symptom:** All users get the same beauty scores, or scores are outside [1, 5]
+**Cause:** Wrong checkpoint loaded, or SHA256 integrity check failed silently
+**Fix:** Verify checkpoint integrity:
+```bash
+# Check the hash stored as GCS metadata
+gsutil stat gs://$BUCKET/models/universal_extractor.pth
+# Compute local hash
+sha256sum models/universal_extractor.pth
+```
+
+### Profile Quality Score Always "Low"
+**Symptom:** All profiles get `quality_tier = "low"` regardless of response quality
+**Cause:** Response style detection (ERS/MRS) flagging too aggressively, or word counts below 25
+**Fix:** Check the `response_styles` and `flags` fields in the `personality_profiles` table. Review the thresholds in `profile_service.py` — ERS triggers at >40% extreme scores (±4/±5), MRS at >50% near-zero scores.
+
+### Calibration Queue Empty Despite Running Cluster Generator
+**Symptom:** `GET /api/v1/admin/calibration/queue` returns empty list
+**Cause:** Cluster generator completed but Gemini parsing failed, or `ANTHROPIC_API_KEY` not set
+**Fix:** Check cluster generator logs for errors. Verify API key:
+```bash
+gcloud secrets versions access latest --secret=ANTHROPIC_API_KEY | head -c 10
+```
+
+### Cloud Build Pipeline Fails at Migration Step
+**Symptom:** `alembic upgrade head` fails during Cloud Build step 3
+**Cause:** `DATABASE_URL` secret not accessible from Cloud Build, or migration has a syntax error
+**Fix:** Verify the secret is bound in `cloudbuild.yaml`:
+```yaml
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/DATABASE_URL/versions/latest
+      env: 'DATABASE_URL'
+```
+
+---
+
+## Testing
+
+### Running Tests
+```bash
+# Install test dependencies
+pip install -r requirements.txt
+
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run a specific test file
+pytest tests/test_hla_service.py
+
+# Run a specific test class
+pytest tests/test_similarity_service.py::TestSharedDirection
+
+# Run integration tests only
+pytest tests/test_integration.py
+```
+
+### Test Coverage Summary
+
+| Test File | Service | Tests | Key Validations |
+|-----------|---------|-------|-----------------|
+| test_gemini_service.py | GeminiService | 9 | Prompt anchors, few-shot injection, evidence location, LIWC signals, discrepancies |
+| test_profile_service.py | ProfileService | 10 | CWMV formula, variance penalty, outlier detection, ERS/MRS, quality tiers, async pipeline |
+| test_similarity_service.py | SimilarityService | 18 | Shared direction, spec worked example (4/7 overlap), quality multiplier, thresholds, HLA display |
+| test_visual_service.py | VisualService | 5 | S_vis formula components, MetaFBP scaling [1,5]→[0,100], trait matching |
+| test_hla_service.py | HLAService | 12 | S_bio (91.67 spec), identical/different alleles, heterozygosity, olfactory, display tier, encryption |
+| test_matching_service.py | MatchingService | 6 | WtM spec (74.96), weight redistribution, reciprocal asymmetric, friction flags/penalty |
+| test_report_service.py | ReportService | 9 | L1 NO sin labels/evidence/raw scores, L3 evidence maps + WtM formula, Protocol A/B personas |
+| test_calibration_service.py | CalibrationService | 7 | Review state transitions, corrected-first ranking, score diversity, coverage 6×7=42 cells |
+| test_integration.py | Full Pipeline | 9 | Spec worked examples (Phase 1/2/3/WtM), calibration pipeline, weight redistribution |
+
+### Load Testing
+```bash
+# Run 100 profiles through the full pipeline
+python -m scripts.load_test --count 100 --base-url http://localhost:8000
+```
+
+---
+
 ## Key Formulas Reference
 
 **Visual Score:** `S_vis = (MetaFBP_Component × 0.6) + (T_match_positive × 0.25) + (T_match_negative × 0.15)`
